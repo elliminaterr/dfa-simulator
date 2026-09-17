@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DFA Simulator — step through a finite automaton</title>
+<style>
+  :root {
+    --bg: #fbfaf8;
+    --panel: #ffffff;
+    --ink: #1c1b19;
+    --muted: #6b6862;
+    --line: #e2ddd5;
+    --accent: #4f46e5;
+    --accent-soft: #eceafe;
+    --accept: #15803d;
+    --accept-soft: #e6f4ea;
+    --reject: #b91c1c;
+    --reject-soft: #fdeaea;
+    --radius: 10px;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --panel: #1c1f24;
+      --ink: #eceff3;
+      --muted: #9aa1ab;
+      --line: #2e333b;
+      --accent: #8b87f5;
+      --accent-soft: #272a45;
+      --accept: #5cc98a;
+      --accept-soft: #1b3226;
+      --reject: #f08a86;
+      --reject-soft: #3a2020;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px 16px 56px;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+
+  header { margin-bottom: 22px; }
+  h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  header p { margin: 0; color: var(--muted); font-size: 14px; max-width: 60ch; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+
+  label.field { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+
+  select, input[type=text], textarea, button {
+    font-family: inherit;
+    font-size: 15px;
+    color: var(--ink);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 9px 11px;
+  }
+  select, input[type=text] { width: 100%; }
+  input[type=text] { font-family: var(--mono); letter-spacing: 0.12em; }
+  input[type=text]:focus, select:focus, textarea:focus, button:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 1px;
+  }
+
+  .machine-desc { font-size: 14px; color: var(--muted); margin: 10px 0 0; }
+  .machine-desc code { font-family: var(--mono); font-size: 13px; }
+
+  .diagram { margin: 4px 0 0; }
+  svg { width: 100%; height: auto; display: block; }
+
+  .node circle { fill: var(--panel); stroke: var(--ink); stroke-width: 2; transition: fill .18s, stroke .18s; }
+  .node text { font-family: var(--mono); font-size: 15px; fill: var(--ink); text-anchor: middle; dominant-baseline: central; }
+  .node.current circle { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 3; }
+  .node.current text { fill: var(--accent); font-weight: 700; }
+  .node.accepted circle { fill: var(--accept-soft); stroke: var(--accept); stroke-width: 3; }
+  .node.accepted text { fill: var(--accept); font-weight: 700; }
+
+  .edge { fill: none; stroke: var(--muted); stroke-width: 1.7; marker-end: url(#arrow); }
+  .edge.active { stroke: var(--accent); stroke-width: 3; marker-end: url(#arrow-active); }
+  .edge-label { font-family: var(--mono); font-size: 13px; fill: var(--muted); text-anchor: middle; dominant-baseline: central; }
+  .edge-label.active { fill: var(--accent); font-weight: 700; }
+  .start-label { font-size: 11px; fill: var(--muted); text-anchor: middle; letter-spacing: .06em; }
+
+  .tape { display: flex; flex-wrap: wrap; gap: 5px; margin: 14px 0 4px; min-height: 40px; }
+  .cell {
+    font-family: var(--mono); font-size: 17px;
+    width: 34px; height: 40px;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--line); border-radius: 6px;
+    background: var(--panel); color: var(--ink);
+    transition: all .15s;
+  }
+  .cell.done { color: var(--muted); opacity: .45; }
+  .cell.head { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 700; transform: translateY(-3px); }
+  .cell.empty { color: var(--muted); font-style: italic; width: auto; padding: 0 12px; border-style: dashed; }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+  button { cursor: pointer; font-weight: 600; font-size: 14px; }
+  button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover:not(:disabled) { opacity: .88; color: #fff; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .spacer { flex: 1 1 auto; }
+  .speed { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+  .speed select { width: auto; padding: 6px 8px; font-size: 13px; }
+
+  .verdict { margin-top: 14px; padding: 11px 13px; border-radius: 8px; font-size: 15px; font-weight: 600; border: 1px solid transparent; }
+  .verdict.accept { background: var(--accept-soft); color: var(--accept); border-color: var(--accept); }
+  .verdict.reject { background: var(--reject-soft); color: var(--reject); border-color: var(--reject); }
+  .verdict.running { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); font-weight: 500; }
+  .verdict .why { display: block; font-weight: 400; font-size: 13.5px; margin-top: 3px; opacity: .9; }
+
+  .error { color: var(--reject); font-size: 13px; margin-top: 6px; min-height: 18px; }
+
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 0 0 10px; }
+  .trace { font-family: var(--mono); font-size: 13.5px; margin: 0; padding: 0; list-style: none; max-height: 190px; overflow-y: auto; }
+  .trace li { padding: 5px 0; border-bottom: 1px dashed var(--line); color: var(--muted); }
+  .trace li:last-child { border-bottom: none; color: var(--ink); }
+  .trace .empty-note { font-family: inherit; font-style: italic; }
+
+  details { margin-top: 4px; }
+  summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--muted); }
+  summary:hover { color: var(--accent); }
+  textarea { width: 100%; min-height: 190px; font-family: var(--mono); font-size: 12.5px; margin-top: 10px; resize: vertical; line-height: 1.5; }
+
+  footer { color: var(--muted); font-size: 12.5px; text-align: center; margin-top: 8px; }
+
+  @media (max-width: 480px) {
+    body { padding: 18px 12px 40px; }
+    .panel { padding: 13px; }
+    .cell { width: 30px; height: 36px; font-size: 15px; }
+    .controls button { flex: 1 1 auto; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>DFA Simulator</h1>
+    <p>Pick a machine, type an input string, and step through it one symbol at a time. The current state and the transition being taken are highlighted as you go.</p>
+  </header>
+
+  <div class="panel">
+    <label class="field" for="machine">Machine</label>
+    <select id="machine"></select>
+    <p class="machine-desc" id="machine-desc"></p>
+  </div>
+
+  <div class="panel">
+    <div class="diagram" id="diagram"></div>
+  </div>
+
+  <div class="panel">
+    <label class="field" for="input">Input string</label>
+    <input type="text" id="input" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <div class="error" id="error"></div>
+
+    <div class="tape" id="tape"></div>
+
+    <div class="controls">
+      <button id="btn-step" class="primary">Step →</button>
+      <button id="btn-back">← Back</button>
+      <button id="btn-run">Run</button>
+      <button id="btn-reset">Reset</button>
+      <span class="spacer"></span>
+      <span class="speed">
+        <label for="speed">Speed</label>
+        <select id="speed">
+          <option value="900">Slow</option>
+          <option value="550" selected>Normal</option>
+          <option value="250">Fast</option>
+        </select>
+      </span>
+    </div>
+
+    <div class="verdict running" id="verdict"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Trace</h2>
+    <ul class="trace" id="trace"></ul>
+  </div>
+
+  <div class="panel">
+    <details>
+      <summary>Define your own machine (JSON)</summary>
+      <textarea id="custom" spellcheck="false"></textarea>
+      <div class="controls">
+        <button id="btn-load" class="primary">Load machine</button>
+        <button id="btn-copy-current">Copy current machine</button>
+      </div>
+      <div class="error" id="custom-error"></div>
+    </details>
+  </div>
+
+  <footer>Built with plain HTML, CSS and JavaScript — no framework, no build step.</footer>
+</div>
+
+<script>
+"use strict";
+
+/* ------------------------------------------------------------------ *
+ * Machine definitions.
+ *
+ * A machine is: states (with fixed x/y positions so we never have to
+ * do automatic graph layout), a transition list, and an alphabet.
+ * `curve` bends an edge perpendicular to the line between two states —
+ * positive one way, negative the other — so a->b and b->a never overlap.
+ * ------------------------------------------------------------------ */
+
+const MACHINES = {
+  endsWith01: {
+    name: "Binary strings ending in 01",
+    description: "Accepts any string over <code>{0, 1}</code> whose last two symbols are <code>01</code>.",
+    alphabet: ["0", "1"],
+    viewBox: "0 0 520 270",
+    sample: "11010",
+    states: [
+      { id: "A", label: "q₀", x: 90,  y: 150, start: true },
+      { id: "B", label: "q₁", x: 250, y: 150 },
+      { id: "C", label: "q₂", x: 410, y: 150, accept: true }
+    ],
+    transitions: [
+      { from: "A", to: "A", symbols: ["1"] },
+      { from: "A", to: "B", symbols: ["0"], curve: -48 },
+      { from: "B", to: "B", symbols: ["0"] },
+      { from: "B", to: "C", symbols: ["1"], curve: -48 },
+      { from: "C", to: "B", symbols: ["0"], curve: -48 },
+      { from: "C", to: "A", symbols: ["1"], curve: -95 }
+    ]
+  },
+
+  evenOnes: {
+    name: "Even number of 1s",
+    description: "Accepts strings over <code>{0, 1}</code> containing an even number of <code>1</code>s. The empty string is accepted.",
+    alphabet: ["0", "1"],
+    viewBox: "0 0 460 250",
+    sample: "10110",
+    states: [
+      { id: "E", label: "even", x: 140, y: 140, start: true, accept: true },
+      { id: "O", label: "odd",  x: 330, y: 140 }
+    ],
+    transitions: [
+      { from: "E", to: "E", symbols: ["0"] },
+      { from: "O", to: "O", symbols: ["0"] },
+      { from: "E", to: "O", symbols: ["1"], curve: -50 },
+      { from: "O", to: "E", symbols: ["1"], curve: -50 }
+    ]
+  },
+
+  containsAba: {
+    name: "Contains the substring “aba”",
+    description: "Accepts strings over <code>{a, b}</code> that contain <code>aba</code> anywhere. <code>q₃</code> is an absorbing accepting state.",
+    alphabet: ["a", "b"],
+    viewBox: "0 -50 520 350",
+    sample: "bbabaa",
+    states: [
+      { id: "q0", label: "q₀", x: 90,  y: 110, start: true },
+      { id: "q1", label: "q₁", x: 250, y: 110 },
+      { id: "q2", label: "q₂", x: 410, y: 110 },
+      { id: "q3", label: "q₃", x: 250, y: 235, accept: true }
+    ],
+    transitions: [
+      { from: "q0", to: "q0", symbols: ["b"] },
+      { from: "q0", to: "q1", symbols: ["a"], curve: -46 },
+      { from: "q1", to: "q1", symbols: ["a"] },
+      { from: "q1", to: "q2", symbols: ["b"], curve: -46 },
+      { from: "q2", to: "q0", symbols: ["b"], curve: -200 },
+      { from: "q2", to: "q3", symbols: ["a"], curve: -40 },
+      { from: "q3", to: "q3", symbols: ["a", "b"], loopDir: "down" }
+    ]
+  },
+
+  multiplesOfThree: {
+    name: "Binary numbers divisible by 3",
+    description: "Reads a binary numeral most-significant bit first and accepts when its value is divisible by 3. Each state is the remainder so far.",
+    alphabet: ["0", "1"],
+    viewBox: "0 0 460 330",
+    sample: "1001",
+    states: [
+      { id: "r0", label: "r0", x: 110, y: 165, start: true, accept: true },
+      { id: "r1", label: "r1", x: 310, y: 80 },
+      { id: "r2", label: "r2", x: 310, y: 250 }
+    ],
+    transitions: [
+      { from: "r0", to: "r0", symbols: ["0"] },
+      { from: "r0", to: "r1", symbols: ["1"], curve: -44 },
+      { from: "r1", to: "r0", symbols: ["1"], curve: -44 },
+      { from: "r1", to: "r2", symbols: ["0"], curve: -44 },
+      { from: "r2", to: "r1", symbols: ["0"], curve: -44 },
+      { from: "r2", to: "r2", symbols: ["1"], loopDir: "down" }
+    ]
+  }
+};
+
+const R = 26; // state radius
+
+/* ------------------------------------------------------------------ *
+ * Simulation state
+ * ------------------------------------------------------------------ */
+
+let machine = null;     // current machine definition
+let delta = null;       // Map "state|symbol" -> target state id
+let input = "";         // validated input string
+let pos = 0;            // read head position
+let current = null;     // current state id
+let activeEdge = null;  // "from->to" of the transition just taken
+let trace = [];         // list of strings for the trace panel
+let status = "running"; // "running" | "accept" | "reject"
+let statusWhy = "";
+let timer = null;
+
+/* ------------------------------------------------------------------ *
+ * DOM
+ * ------------------------------------------------------------------ */
+
+const $ = (id) => document.getElementById(id);
+const els = {
+  machine: $("machine"), desc: $("machine-desc"), diagram: $("diagram"),
+  input: $("input"), error: $("error"), tape: $("tape"), trace: $("trace"),
+  verdict: $("verdict"), step: $("btn-step"), back: $("btn-back"),
+  run: $("btn-run"), reset: $("btn-reset"), speed: $("speed"),
+  custom: $("custom"), customError: $("custom-error"),
+  load: $("btn-load"), copy: $("btn-copy-current")
+};
+
+/* ------------------------------------------------------------------ *
+ * Loading a machine
+ * ------------------------------------------------------------------ */
+
+function loadMachine(def, sampleInput) {
+  machine = def;
+  delta = new Map();
+  for (const t of def.transitions) {
+    for (const s of t.symbols) delta.set(t.from + "|" + s, t.to);
+  }
+  els.desc.innerHTML = def.description || "";
+  els.input.value = sampleInput !== undefined ? sampleInput : (def.sample || "");
+  els.input.placeholder = "symbols from {" + def.alphabet.join(", ") + "}";
+  drawDiagram();
+  reset();
+}
+
+function startState() {
+  const s = machine.states.find((s) => s.start);
+  return s ? s.id : machine.states[0].id;
+}
+
+function isAccepting(id) {
+  const s = machine.states.find((s) => s.id === id);
+  return !!(s && s.accept);
+}
+
+/* ------------------------------------------------------------------ *
+ * Diagram rendering (SVG, rebuilt on every step — it is tiny)
+ * ------------------------------------------------------------------ */
+
+function stateById(id) { return machine.states.find((s) => s.id === id); }
+
+// Point on a quadratic Bezier at parameter t.
+function quadAt(p0, c, p1, t) {
+  const u = 1 - t;
+  return {
+    x: u * u * p0.x + 2 * u * t * c.x + t * t * p1.x,
+    y: u * u * p0.y + 2 * u * t * c.y + t * t * p1.y
+  };
+}
+
+function edgeGeometry(t) {
+  const a = stateById(t.from), b = stateById(t.to);
+
+  if (a.id === b.id) {
+    // Self loop: a cubic arc leaving and re-entering the same circle.
+    const dir = t.loopDir === "down" ? 1 : -1;
+    const dx = R * Math.cos(Math.PI / 4);
+    const dy = R * Math.sin(Math.PI / 4) * dir;
+    const x1 = a.x - dx, y1 = a.y + dy;
+    const x2 = a.x + dx, y2 = a.y + dy;
+    const lift = 72 * dir;
+    return {
+      d: `M ${x1} ${y1} C ${a.x - 42} ${a.y + lift}, ${a.x + 42} ${a.y + lift}, ${x2} ${y2}`,
+      label: { x: a.x, y: a.y + lift * 0.92 }
+    };
+  }
+
+  const vx = b.x - a.x, vy = b.y - a.y;
+  const len = Math.hypot(vx, vy) || 1;
+  const ux = vx / len, uy = vy / len;
+  const px = -uy, py = ux;                    // unit perpendicular
+  const curve = t.curve === undefined ? 0 : t.curve;
+  const mid = { x: a.x + vx / 2, y: a.y + vy / 2 };
+  const c = { x: mid.x + px * curve, y: mid.y + py * curve };
+
+  // Leave/enter each circle aimed at the control point, so the arrow
+  // meets the rim rather than the centre.
+  const outAng = Math.atan2(c.y - a.y, c.x - a.x);
+  const inAng = Math.atan2(c.y - b.y, c.x - b.x);
+  const p0 = { x: a.x + R * Math.cos(outAng), y: a.y + R * Math.sin(outAng) };
+  const p1 = { x: b.x + (R + 7) * Math.cos(inAng), y: b.y + (R + 7) * Math.sin(inAng) };
+  const m = quadAt(p0, c, p1, 0.5);
+
+  return {
+    d: `M ${p0.x} ${p0.y} Q ${c.x} ${c.y} ${p1.x} ${p1.y}`,
+    label: { x: m.x + px * (curve >= 0 ? 15 : -15), y: m.y + py * (curve >= 0 ? 15 : -15) }
+  };
+}
+
+function drawDiagram() {
+  const parts = [];
+  parts.push(`<svg viewBox="${machine.viewBox}" role="img" aria-label="State diagram of ${machine.name}">`);
+  parts.push(`<defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--muted)"/>
+    </marker>
+    <marker id="arrow-active" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent)"/>
+    </marker>
+  </defs>`);
+
+  // Start arrow
+  const s = stateById(startState());
+  parts.push(`<path class="edge" d="M ${s.x - R - 36} ${s.y} L ${s.x - R - 7} ${s.y}"/>`);
+  parts.push(`<text class="start-label" x="${s.x - R - 22}" y="${s.y - 12}">start</text>`);
+
+  // Edges
+  for (const t of machine.transitions) {
+    const g = edgeGeometry(t);
+    const active = activeEdge === t.from + "->" + t.to;
+    parts.push(`<path class="edge${active ? " active" : ""}" d="${g.d}"/>`);
+    parts.push(`<text class="edge-label${active ? " active" : ""}" x="${g.label.x}" y="${g.label.y}">${t.symbols.join(", ")}</text>`);
+  }
+
+  // States
+  for (const st of machine.states) {
+    const isCurrent = st.id === current;
+    const done = status === "accept" && isCurrent;
+    const cls = "node" + (done ? " accepted" : isCurrent ? " current" : "");
+    parts.push(`<g class="${cls}">`);
+    if (st.accept) parts.push(`<circle cx="${st.x}" cy="${st.y}" r="${R + 5}"/>`);
+    parts.push(`<circle cx="${st.x}" cy="${st.y}" r="${R}"/>`);
+    parts.push(`<text x="${st.x}" y="${st.y}">${st.label}</text>`);
+    parts.push(`</g>`);
+  }
+
+  parts.push(`</svg>`);
+  els.diagram.innerHTML = parts.join("");
+}
+
+/* ------------------------------------------------------------------ *
+ * Tape, trace, verdict
+ * ------------------------------------------------------------------ */
+
+function drawTape() {
+  if (input.length === 0) {
+    els.tape.innerHTML = `<div class="cell empty">ε (empty string)</div>`;
+    return;
+  }
+  els.tape.innerHTML = [...input].map((ch, i) => {
+    const cls = i < pos ? "done" : (i === pos && status === "running" ? "head" : "");
+    return `<div class="cell ${cls}">${ch}</div>`;
+  }).join("");
+}
+
+function drawTrace() {
+  if (trace.length === 0) {
+    els.trace.innerHTML = `<li class="empty-note">No steps taken yet.</li>`;
+    return;
+  }
+  els.trace.innerHTML = trace.map((line) => `<li>${line}</li>`).join("");
+  els.trace.scrollTop = els.trace.scrollHeight;
+}
+
+function drawVerdict() {
+  const label = stateById(current) ? stateById(current).label : current;
+  if (status === "accept") {
+    els.verdict.className = "verdict accept";
+    els.verdict.innerHTML = `Accepted<span class="why">${statusWhy}</span>`;
+  } else if (status === "reject") {
+    els.verdict.className = "verdict reject";
+    els.verdict.innerHTML = `Rejected<span class="why">${statusWhy}</span>`;
+  } else {
+    els.verdict.className = "verdict running";
+    const remaining = input.length - pos;
+    els.verdict.innerHTML = `In state <strong>${label}</strong> — ${remaining} symbol${remaining === 1 ? "" : "s"} left to read.`;
+  }
+}
+
+function drawControls() {
+  const done = status !== "running";
+  els.step.disabled = done || els.error.textContent !== "";
+  els.back.disabled = trace.length === 0;
+  els.run.disabled = done || els.error.textContent !== "";
+  els.run.textContent = timer ? "Pause" : "Run";
+}
+
+function redraw() {
+  drawDiagram();
+  drawTape();
+  drawTrace();
+  drawVerdict();
+  drawControls();
+}
+
+/* ------------------------------------------------------------------ *
+ * Stepping
+ * ------------------------------------------------------------------ */
+
+function validate() {
+  const raw = els.input.value.replace(/\s+/g, "");
+  const bad = [...raw].filter((ch) => !machine.alphabet.includes(ch));
+  if (bad.length) {
+    els.error.textContent =
+      `“${bad[0]}” is not in the alphabet {${machine.alphabet.join(", ")}}.`;
+    return null;
+  }
+  els.error.textContent = "";
+  return raw;
+}
+
+function reset() {
+  stopRunning();
+  const v = validate();
+  input = v === null ? "" : v;
+  pos = 0;
+  current = startState();
+  activeEdge = null;
+  trace = [];
+  status = "running";
+  statusWhy = "";
+  if (v !== null && input.length === 0) finish();  // empty string decides immediately
+  redraw();
+}
+
+function finish() {
+  const label = stateById(current).label;
+  if (isAccepting(current)) {
+    status = "accept";
+    statusWhy = `Input consumed in ${label}, which is an accepting state.`;
+  } else {
+    status = "reject";
+    statusWhy = `Input consumed in ${label}, which is not an accepting state.`;
+  }
+}
+
+function step() {
+  if (status !== "running") return;
+  if (pos >= input.length) { finish(); redraw(); return; }
+
+  const sym = input[pos];
+  const from = current;
+  const to = delta.get(from + "|" + sym);
+  const fromLabel = stateById(from).label;
+
+  if (to === undefined) {
+    status = "reject";
+    statusWhy = `No transition out of ${fromLabel} on “${sym}”, so the machine halts and rejects.`;
+    activeEdge = null;
+    trace.push(`δ(${fromLabel}, ${sym}) is undefined — reject`);
+    redraw();
+    stopRunning();
+    return;
+  }
+
+  trace.push(`δ(${fromLabel}, ${sym}) = ${stateById(to).label}`);
+  current = to;
+  activeEdge = from + "->" + to;
+  pos += 1;
+
+  if (pos >= input.length) finish();
+  redraw();
+  if (status !== "running") stopRunning();
+}
+
+function back() {
+  if (trace.length === 0) return;
+  stopRunning();
+  const target = trace.length - 1;   // replay from the start to the previous config
+  const saved = input;
+  reset();
+  input = saved;
+  for (let i = 0; i < target; i++) step();
+  redraw();
+}
+
+function toggleRun() {
+  if (timer) { stopRunning(); redraw(); return; }
+  const delay = Number(els.speed.value);
+  timer = setInterval(() => {
+    step();
+    if (status !== "running") stopRunning();
+  }, delay);
+  step();
+  redraw();
+}
+
+function stopRunning() {
+  if (timer) { clearInterval(timer); timer = null; }
+}
+
+/* ------------------------------------------------------------------ *
+ * Custom machines
+ * ------------------------------------------------------------------ */
+
+function loadCustom() {
+  els.customError.textContent = "";
+  let def;
+  try {
+    def = JSON.parse(els.custom.value);
+  } catch (e) {
+    els.customError.textContent = "That is not valid JSON: " + e.message;
+    return;
+  }
+  if (!Array.isArray(def.states) || !def.states.length) {
+    els.customError.textContent = "Needs a non-empty “states” array.";
+    return;
+  }
+  if (!Array.isArray(def.transitions)) {
+    els.customError.textContent = "Needs a “transitions” array.";
+    return;
+  }
+  const ids = new Set(def.states.map((s) => s.id));
+  for (const t of def.transitions) {
+    if (!ids.has(t.from) || !ids.has(t.to)) {
+      els.customError.textContent = `Transition ${t.from} → ${t.to} refers to an unknown state.`;
+      return;
+    }
+  }
+  def.alphabet = def.alphabet || [...new Set(def.transitions.flatMap((t) => t.symbols))];
+  def.viewBox = def.viewBox || "0 0 520 300";
+  def.name = def.name || "Custom machine";
+  els.machine.value = "__custom";
+  loadMachine(def, def.sample || "");
+}
+
+/* ------------------------------------------------------------------ *
+ * Wiring
+ * ------------------------------------------------------------------ */
+
+for (const [key, def] of Object.entries(MACHINES)) {
+  const opt = document.createElement("option");
+  opt.value = key;
+  opt.textContent = def.name;
+  els.machine.appendChild(opt);
+}
+const customOpt = document.createElement("option");
+customOpt.value = "__custom";
+customOpt.textContent = "Custom machine";
+customOpt.hidden = true;
+els.machine.appendChild(customOpt);
+
+els.machine.addEventListener("change", () => {
+  const def = MACHINES[els.machine.value];
+  if (def) loadMachine(def);
+});
+els.input.addEventListener("input", reset);
+els.step.addEventListener("click", () => { stopRunning(); step(); drawControls(); });
+els.back.addEventListener("click", back);
+els.run.addEventListener("click", toggleRun);
+els.reset.addEventListener("click", reset);
+els.speed.addEventListener("change", () => { if (timer) { stopRunning(); toggleRun(); } });
+els.load.addEventListener("click", loadCustom);
+els.copy.addEventListener("click", () => {
+  els.custom.value = JSON.stringify(machine, null, 2);
+  els.customError.textContent = "";
+});
+
+document.addEventListener("keydown", (e) => {
+  if (document.activeElement === els.input || document.activeElement === els.custom) return;
+  if (e.key === "ArrowRight") { e.preventDefault(); stopRunning(); step(); drawControls(); }
+  if (e.key === "ArrowLeft") { e.preventDefault(); back(); }
+  if (e.key === " ") { e.preventDefault(); toggleRun(); }
+});
+
+loadMachine(MACHINES.endsWith01);
+els.custom.value = JSON.stringify(MACHINES.evenOnes, null, 2);
+</script>
+</body>
+</html>
