@@ -12,7 +12,7 @@ as an application of the transition function.
 - Four built-in machines: strings ending in `01`, even number of `1`s, strings containing
   `aba`, and binary numerals divisible by 3
 - Forward stepping, backward stepping, and continuous run with a speed control
-- State diagram rendered as SVG — accepting states drawn as double circles, self-loops as
+- State diagram rendered as SVG: accepting states drawn as double circles, self-loops as
   arcs, and opposing transitions curved to opposite sides so they never overlap
 - Input tape showing consumed, current and remaining symbols
 - Trace panel recording each step as `δ(q, a) = q′`
