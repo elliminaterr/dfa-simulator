@@ -1,7 +1,7 @@
 # DFA Simulator
 
 An interactive deterministic finite automaton simulator that runs in the browser.
-Pick a machine, type an input string, and step through it one symbol at a time — the
+Pick a machine, type an input string, and step through it one symbol at a time. The
 current state and the transition being taken are highlighted, and each move is logged
 as an application of the transition function.
 
@@ -32,7 +32,7 @@ python3 -m http.server 8000
 
 ## Defining a machine
 
-State positions are given explicitly rather than laid out automatically — for teaching
+State positions are given explicitly rather than laid out automatically - for teaching
 diagrams a hand-placed layout is clearer than anything a force-directed algorithm
 produces, and it keeps the code small. The viewBox is measured from the rendered
 geometry, so a new machine never needs its bounds tuned by hand.
