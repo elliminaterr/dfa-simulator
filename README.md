@@ -60,8 +60,3 @@ geometry, so a new machine never needs its bounds tuned by hand.
 `A → B` and `B → A` sit on opposite sides. `loopDir: "down"` draws a self-loop below its
 state instead of above.
 
-## Deploying
-
-Push to a GitHub repository, then **Settings → Pages → Build and deployment → Deploy from
-a branch → main / (root)**. The site is live at
-`https://<username>.github.io/<repo>/` within a minute or two.
